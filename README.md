@@ -9,8 +9,9 @@ Small FastAPI service that forwards selected Slack channel activity to Telegram.
 - Ignores bot messages and duplicate Slack `event_id` values.
 - Filters Slack events by `SLACK_CHANNEL_IDS`.
 - Sends Slack text messages to Telegram.
+- Sends forwarded or shared Slack messages to Telegram, including nested text and files.
 - Downloads Slack private files with the Slack bot token before forwarding.
-- Sends normal files to Telegram when they fit within `TELEGRAM_MAX_UPLOAD_MB`.
+- Sends normal files and images to Telegram when they fit within `TELEGRAM_MAX_UPLOAD_MB`.
 - Uploads videos and oversized files to Google Drive, makes them readable by anyone with the link, and sends the Drive link to Telegram.
 - Never posts Slack private file URLs to Telegram.
 
@@ -76,7 +77,7 @@ For Docker Compose, put the Google service account JSON at `./secrets/google-ser
 ## Slack Setup
 
 1. Create a Slack app and add a bot token with permission to read files and messages in the channels you want to forward.
-2. Subscribe the app to message events for the relevant channel types.
+2. Subscribe the app to message events for the relevant channel types. Forwarded messages, message shares, file shares, images, and videos are handled from the message event payload.
 3. Set the Events API request URL to `https://your-domain.example/slack/events`.
 4. Invite the bot to each allowed Slack channel.
 5. Put those channel IDs in `SLACK_CHANNEL_IDS`.
