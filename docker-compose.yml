@@ -1,0 +1,13 @@
+services:
+  slack-trigger:
+    image: ${DOCKER_IMAGE:-slack-trigger:local}
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
