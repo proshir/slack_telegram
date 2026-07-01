@@ -19,7 +19,7 @@ Small FastAPI service that forwards selected Slack channel activity to Telegram.
 
 Copy `.env.example` to `.env` and fill in the values.
 
-Do not commit `.env`, Slack tokens, Telegram tokens, or Google service account JSON files.
+Do not commit `.env`, Slack tokens, Telegram tokens, Google service account JSON files, OAuth client JSON files, or OAuth token JSON files.
 
 ### Environment Variables
 
@@ -31,8 +31,11 @@ Do not commit `.env`, Slack tokens, Telegram tokens, or Google service account J
 | `SLACK_MESSAGE_SHORTCUT_CALLBACK_ID` | No | Use this as the callback ID when creating the Slack message shortcut. Default is `send_to_telegram`. |
 | `TELEGRAM_BOT_TOKEN` | Yes | In Telegram, message `@BotFather`, run `/newbot`, follow the prompts, then copy the token BotFather returns. For an existing bot, use `/mybots`, select the bot, then use **API Token**. |
 | `TELEGRAM_CHAT_ID` | Yes | Add the bot to the destination chat or channel, send a test message, then call `https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates` and copy `message.chat.id` or `channel_post.chat.id`. |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Yes | In Google Cloud, create a service account, create a JSON key for it, save the JSON file locally, and set this variable to the path inside the runtime container. For Compose, use `/app/secrets/google-service-account.json`. |
-| `GOOGLE_DRIVE_FOLDER_ID` | Yes | In Google Drive, create or open a folder inside a Shared Drive, add the service account as a member with upload permission, then copy the folder ID from the folder URL. |
+| `GOOGLE_AUTH_MODE` | No | Set to `oauth` to upload as your Google user into personal My Drive quota. Set to `service_account` for Shared Drive service-account uploads. Default is `service_account`. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account only | In Google Cloud, create a service account, create a JSON key for it, save the JSON file locally, and set this variable to the path inside the runtime container. For Compose, use `/app/secrets/google-service-account.json`. |
+| `GOOGLE_OAUTH_CLIENT_SECRETS` | OAuth only | Path to the OAuth desktop client JSON downloaded from Google Cloud. For Compose, use `/app/secrets/google-oauth-client.json`. |
+| `GOOGLE_OAUTH_TOKEN` | OAuth only | Path to the generated OAuth user token JSON. For Compose, use `/app/secrets/google-oauth-token.json`. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Yes | In Google Drive, create or open the destination folder, then copy the folder ID from the folder URL. For service-account mode, this folder must be inside a Shared Drive. |
 | `DATABASE_PATH` | No | Set this to the SQLite file path where deduplication state should be stored. |
 | `TELEGRAM_MAX_UPLOAD_MB` | No | Set this to the max file size the app should attempt to send directly to Telegram before falling back to Google Drive. Default is `50`. |
 | `LOG_LEVEL` | No | Set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Default is `INFO`. |
@@ -48,7 +51,10 @@ SLACK_CHANNEL_IDS=C0123456789,C9876543210
 TELEGRAM_BOT_TOKEN=123456789:telegram-bot-token
 TELEGRAM_CHAT_ID=-1001234567890
 
+GOOGLE_AUTH_MODE=oauth
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/google-service-account.json
+GOOGLE_OAUTH_CLIENT_SECRETS=/app/secrets/google-oauth-client.json
+GOOGLE_OAUTH_TOKEN=/app/secrets/google-oauth-token.json
 GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 
 SLACK_MESSAGE_SHORTCUT_CALLBACK_ID=send_to_telegram
@@ -74,7 +80,7 @@ REQUEST_TIMEOUT_SECONDS=30
 SLACK_CHANNEL_IDS=C0123456789,C9876543210
 ```
 
-For Docker Compose, put the Google service account JSON at `./secrets/google-service-account.json` or update `GOOGLE_APPLICATION_CREDENTIALS` and the volume mount together.
+For Docker Compose, put Google credential files under `./secrets` or update the matching `GOOGLE_*` path and the volume mount together.
 
 ## Slack Setup
 
@@ -164,13 +170,52 @@ TELEGRAM_CHAT_ID=-1001234567890
 
 ## Google Drive Setup
 
-Use a Google Shared Drive for service account uploads. A normal user-owned **My Drive** folder can produce this error:
+Use OAuth when you want uploads to use your personal Google Drive quota. Use service-account auth only when uploading into a Google Workspace Shared Drive.
+
+### Option A: OAuth User Uploads
+
+Use this for a personal **My Drive** folder, including Google One storage such as 3 TB plans.
+
+1. Open Google Cloud Console at <https://console.cloud.google.com/>.
+2. Select or create the Google Cloud project you want to use.
+3. Enable the Google Drive API for that project.
+4. Open **APIs & Services** > **OAuth consent screen** and configure the app for your account.
+5. Open **APIs & Services** > **Credentials**.
+6. Click **Create credentials** > **OAuth client ID**.
+7. Choose **Desktop app**.
+8. Download the client JSON and save it as `./secrets/google-oauth-client.json`.
+9. Generate the OAuth token once and let the helper create the upload folder:
+
+```bash
+python -m app.google_oauth_auth \
+  --client-secrets ./secrets/google-oauth-client.json \
+  --token ./secrets/google-oauth-token.json \
+  --create-folder "Slack Telegram Uploads"
+```
+
+If the browser cannot open automatically, add `--no-browser`, open the printed URL, and complete the login.
+
+10. Copy the printed `GOOGLE_DRIVE_FOLDER_ID`.
+11. In `.env`, set:
+
+```env
+GOOGLE_AUTH_MODE=oauth
+GOOGLE_OAUTH_CLIENT_SECRETS=/app/secrets/google-oauth-client.json
+GOOGLE_OAUTH_TOKEN=/app/secrets/google-oauth-token.json
+GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
+```
+
+The app requests the narrower Google Drive `drive.file` scope. It stores the generated refresh token in `GOOGLE_OAUTH_TOKEN`; keep that file private.
+
+### Option B: Service Account Uploads
+
+Use this only for a Google Workspace Shared Drive. A normal user-owned **My Drive** folder can produce this error:
 
 ```text
 Service Accounts do not have storage quota.
 ```
 
-That happens because a service account is not a normal Google Drive user with personal storage quota. A Shared Drive stores files against the shared drive, not the service account's nonexistent personal Drive quota. The alternative is OAuth/domain-wide delegation, which is more complex and is not used by this first version.
+That happens because a service account is not a normal Google Drive user with personal storage quota. A Shared Drive stores files against the shared drive, not the service account's nonexistent personal Drive quota.
 
 1. Open Google Cloud Console at <https://console.cloud.google.com/>.
 2. Select or create the Google Cloud project you want to use.
@@ -183,6 +228,7 @@ That happens because a service account is not a normal Google Drive user with pe
 9. In `.env`, set:
 
 ```env
+GOOGLE_AUTH_MODE=service_account
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/google-service-account.json
 ```
 

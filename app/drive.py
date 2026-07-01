@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -21,17 +23,16 @@ DRIVE_SCOPES = ("https://www.googleapis.com/auth/drive.file",)
 
 class DriveUploader:
     def __init__(self, settings: Settings) -> None:
+        self._auth_mode = settings.google_auth_mode
         self._credentials_path = settings.google_application_credentials
+        self._oauth_token_path = settings.google_oauth_token
         self._folder_id = settings.google_drive_folder_id
 
     async def upload_file(self, path: Path, filename: str, mime_type: str | None, event_id: str) -> str:
         return await asyncio.to_thread(self._upload_file_sync, path, filename, mime_type, event_id)
 
     def _upload_file_sync(self, path: Path, filename: str, mime_type: str | None, event_id: str) -> str:
-        credentials = service_account.Credentials.from_service_account_file(
-            self._credentials_path,
-            scopes=DRIVE_SCOPES,
-        )
+        credentials = self._load_credentials(event_id)
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
         media = MediaFileUpload(str(path), mimetype=mime_type or "application/octet-stream", resumable=True)
         body = {"name": filename, "parents": [self._folder_id]}
@@ -62,6 +63,45 @@ class DriveUploader:
         link = response.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
         logger.info("event_id=%s drive_file_id=%s route=drive_link", event_id, file_id)
         return link
+
+    def _load_credentials(self, event_id: str) -> Credentials | service_account.Credentials:
+        if self._auth_mode == "service_account":
+            return service_account.Credentials.from_service_account_file(
+                self._credentials_path,
+                scopes=DRIVE_SCOPES,
+            )
+        if self._auth_mode == "oauth":
+            return self._load_oauth_credentials(event_id)
+        raise ValueError(f"Unsupported GOOGLE_AUTH_MODE={self._auth_mode!r}")
+
+    def _load_oauth_credentials(self, event_id: str) -> Credentials:
+        token_path = Path(self._oauth_token_path)
+        if not token_path.exists():
+            raise RuntimeError(
+                f"Google OAuth token file not found at {token_path}. "
+                "Run python -m app.google_oauth_auth first."
+            )
+
+        credentials = Credentials.from_authorized_user_file(str(token_path), scopes=DRIVE_SCOPES)
+        if credentials.valid:
+            return credentials
+        if credentials.expired and credentials.refresh_token:
+            credentials.refresh(Request())
+            self._save_refreshed_oauth_token(token_path, credentials, event_id)
+            return credentials
+        raise RuntimeError(
+            f"Google OAuth token at {token_path} is invalid or missing a refresh token. "
+            "Run python -m app.google_oauth_auth again."
+        )
+
+    def _save_refreshed_oauth_token(self, token_path: Path, credentials: Credentials, event_id: str) -> None:
+        try:
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            token_path.write_text(credentials.to_json(), encoding="utf-8")
+        except OSError:
+            logger.warning("event_id=%s google_oauth_token_refresh_save_failed=true", event_id)
+        else:
+            logger.info("event_id=%s google_oauth_token_refreshed=true", event_id)
 
     def _execute_with_retry(self, request: Any, operation: str, event_id: str) -> dict[str, Any]:
         last_error: Exception | None = None

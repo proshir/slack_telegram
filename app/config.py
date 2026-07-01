@@ -15,7 +15,6 @@ REQUIRED_ENV = (
     "SLACK_CHANNEL_IDS",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
-    "GOOGLE_APPLICATION_CREDENTIALS",
     "GOOGLE_DRIVE_FOLDER_ID",
 )
 
@@ -31,7 +30,10 @@ class Settings:
     slack_channel_ids: set[str]
     telegram_bot_token: str
     telegram_chat_id: str
+    google_auth_mode: str
     google_application_credentials: str
+    google_oauth_client_secrets: str
+    google_oauth_token: str
     google_drive_folder_id: str
     slack_message_shortcut_callback_id: str
     database_path: Path
@@ -55,8 +57,15 @@ class Settings:
             missing.append("TELEGRAM_BOT_TOKEN")
         if not self.telegram_chat_id:
             missing.append("TELEGRAM_CHAT_ID")
-        if not self.google_application_credentials:
+        if self.google_auth_mode == "service_account" and not self.google_application_credentials:
             missing.append("GOOGLE_APPLICATION_CREDENTIALS")
+        if self.google_auth_mode == "oauth":
+            if not self.google_oauth_client_secrets:
+                missing.append("GOOGLE_OAUTH_CLIENT_SECRETS")
+            if not self.google_oauth_token:
+                missing.append("GOOGLE_OAUTH_TOKEN")
+        if self.google_auth_mode not in {"service_account", "oauth"}:
+            missing.append("GOOGLE_AUTH_MODE")
         if not self.google_drive_folder_id:
             missing.append("GOOGLE_DRIVE_FOLDER_ID")
         return missing
@@ -71,7 +80,10 @@ def get_settings() -> Settings:
         slack_channel_ids=_csv_set(os.getenv("SLACK_CHANNEL_IDS", "")),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
+        google_auth_mode=os.getenv("GOOGLE_AUTH_MODE", "service_account").strip().lower(),
         google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        google_oauth_client_secrets=os.getenv("GOOGLE_OAUTH_CLIENT_SECRETS", ""),
+        google_oauth_token=os.getenv("GOOGLE_OAUTH_TOKEN", ""),
         google_drive_folder_id=os.getenv("GOOGLE_DRIVE_FOLDER_ID", ""),
         slack_message_shortcut_callback_id=os.getenv("SLACK_MESSAGE_SHORTCUT_CALLBACK_ID", "send_to_telegram"),
         database_path=Path(os.getenv("DATABASE_PATH", "./data/state.db")),
