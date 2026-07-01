@@ -27,7 +27,8 @@ Do not commit `.env`, Slack tokens, Telegram tokens, or Google service account J
 | --- | --- | --- |
 | `SLACK_SIGNING_SECRET` | Yes | Open <https://api.slack.com/apps>, select your Slack app, go to **Basic Information**, then copy **Signing Secret** from **App Credentials**. |
 | `SLACK_BOT_TOKEN` | Yes | In the same Slack app, go to **OAuth & Permissions**, add bot scopes, install or reinstall the app to the workspace, then copy **Bot User OAuth Token**. It starts with `xoxb-`. |
-| `SLACK_CHANNEL_IDS` | Yes | In Slack, open each source channel, click the channel name, open channel details, and copy the channel ID. Put multiple IDs in `.env` separated by commas, with no spaces required. |
+| `SLACK_CHANNEL_IDS` | Events only | Required only for automatic Event Subscriptions forwarding. In Slack, open each source channel, click the channel name, open channel details, and copy the channel ID. Put multiple IDs in `.env` separated by commas, with no spaces required. Leave empty if you only use the manual message shortcut. |
+| `SLACK_MESSAGE_SHORTCUT_CALLBACK_ID` | No | Use this as the callback ID when creating the Slack message shortcut. Default is `send_to_telegram`. |
 | `TELEGRAM_BOT_TOKEN` | Yes | In Telegram, message `@BotFather`, run `/newbot`, follow the prompts, then copy the token BotFather returns. For an existing bot, use `/mybots`, select the bot, then use **API Token**. |
 | `TELEGRAM_CHAT_ID` | Yes | Add the bot to the destination chat or channel, send a test message, then call `https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates` and copy `message.chat.id` or `channel_post.chat.id`. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | In Google Cloud, create a service account, create a JSON key for it, save the JSON file locally, and set this variable to the path inside the runtime container. For Compose, use `/app/secrets/google-service-account.json`. |
@@ -50,6 +51,7 @@ TELEGRAM_CHAT_ID=-1001234567890
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/google-service-account.json
 GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 
+SLACK_MESSAGE_SHORTCUT_CALLBACK_ID=send_to_telegram
 DATABASE_PATH=./data/state.db
 TELEGRAM_MAX_UPLOAD_MB=50
 LOG_LEVEL=INFO
@@ -81,6 +83,38 @@ For Docker Compose, put the Google service account JSON at `./secrets/google-ser
 3. Set the Events API request URL to `https://your-domain.example/slack/events`.
 4. Invite the bot to each allowed Slack channel.
 5. Put those channel IDs in `SLACK_CHANNEL_IDS`.
+
+## Slack Message Shortcut Setup
+
+Use this when you want to right-click a Slack message and manually send that selected message to Telegram, without copying or forwarding it into a watched channel.
+
+1. Open your Slack app at <https://api.slack.com/apps>.
+2. Go to **Interactivity & Shortcuts**.
+3. Turn **Interactivity** on.
+4. Set **Request URL** to:
+
+```text
+https://your-domain.example/slack/interactions
+```
+
+5. In the same page, create a new shortcut.
+6. Choose **On messages** as the shortcut type.
+7. Set the shortcut name to something users will see, for example:
+
+```text
+Send to Telegram
+```
+
+8. Set **Callback ID** to the same value as `SLACK_MESSAGE_SHORTCUT_CALLBACK_ID`:
+
+```text
+send_to_telegram
+```
+
+9. Save the shortcut.
+10. Reinstall the app to the workspace if Slack asks you to.
+
+After that, users can open a message menu in Slack, choose **Send to Telegram**, and the app will send that selected message to Telegram. This manual shortcut does not enforce `SLACK_CHANNEL_IDS`; the user intentionally selected the exact message to send.
 
 ## Telegram Setup
 

@@ -19,10 +19,17 @@ VIDEO_FILETYPES = {"mp4", "mov", "m4v", "avi", "mkv", "webm"}
 
 
 class SlackEventProcessor:
-    def __init__(self, settings: Settings, telegram: TelegramClient, drive: DriveUploader) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        telegram: TelegramClient,
+        drive: DriveUploader,
+        enforce_channel_allowlist: bool = True,
+    ) -> None:
         self._settings = settings
         self._telegram = telegram
         self._drive = drive
+        self._enforce_channel_allowlist = enforce_channel_allowlist
 
     async def process(self, event_id: str, event: dict[str, Any]) -> None:
         if not is_message_event(event):
@@ -33,7 +40,7 @@ class SlackEventProcessor:
             return
 
         channel_id = str(event.get("channel") or "")
-        if channel_id not in self._settings.slack_channel_ids:
+        if self._enforce_channel_allowlist and channel_id not in self._settings.slack_channel_ids:
             logger.info("event_id=%s channel_id=%s ignored_reason=channel_not_allowed", event_id, channel_id)
             return
 
