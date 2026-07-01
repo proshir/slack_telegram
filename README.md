@@ -31,7 +31,7 @@ Do not commit `.env`, Slack tokens, Telegram tokens, or Google service account J
 | `TELEGRAM_BOT_TOKEN` | Yes | In Telegram, message `@BotFather`, run `/newbot`, follow the prompts, then copy the token BotFather returns. For an existing bot, use `/mybots`, select the bot, then use **API Token**. |
 | `TELEGRAM_CHAT_ID` | Yes | Add the bot to the destination chat or channel, send a test message, then call `https://api.telegram.org/botYOUR_BOT_TOKEN/getUpdates` and copy `message.chat.id` or `channel_post.chat.id`. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | In Google Cloud, create a service account, create a JSON key for it, save the JSON file locally, and set this variable to the path inside the runtime container. For Compose, use `/app/secrets/google-service-account.json`. |
-| `GOOGLE_DRIVE_FOLDER_ID` | Yes | In Google Drive, create or open the destination folder, share it with the service account email, then copy the folder ID from the folder URL. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Yes | In Google Drive, create or open a folder inside a Shared Drive, add the service account as a member with upload permission, then copy the folder ID from the folder URL. |
 | `DATABASE_PATH` | No | Set this to the SQLite file path where deduplication state should be stored. |
 | `TELEGRAM_MAX_UPLOAD_MB` | No | Set this to the max file size the app should attempt to send directly to Telegram before falling back to Google Drive. Default is `50`. |
 | `LOG_LEVEL` | No | Set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. Default is `INFO`. |
@@ -130,6 +130,14 @@ TELEGRAM_CHAT_ID=-1001234567890
 
 ## Google Drive Setup
 
+Use a Google Shared Drive for service account uploads. A normal user-owned **My Drive** folder can produce this error:
+
+```text
+Service Accounts do not have storage quota.
+```
+
+That happens because a service account is not a normal Google Drive user with personal storage quota. A Shared Drive stores files against the shared drive, not the service account's nonexistent personal Drive quota. The alternative is OAuth/domain-wide delegation, which is more complex and is not used by this first version.
+
 1. Open Google Cloud Console at <https://console.cloud.google.com/>.
 2. Select or create the Google Cloud project you want to use.
 3. Enable the Google Drive API for that project.
@@ -144,9 +152,10 @@ TELEGRAM_CHAT_ID=-1001234567890
 GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/google-service-account.json
 ```
 
-10. Open Google Drive and create or select the destination folder for uploaded videos and oversized files.
-11. Share that folder with the service account email address. The email is inside the JSON file as `client_email`, and looks like `name@project-id.iam.gserviceaccount.com`.
-12. Copy the folder ID from the browser URL. For this URL:
+10. Open Google Drive and create or select a **Shared Drive**.
+11. Add the service account email address as a member of the Shared Drive with permission to upload files, such as **Contributor** or **Content manager**. The service account email is inside the JSON file as `client_email`, and looks like `name@project-id.iam.gserviceaccount.com`.
+12. Inside that Shared Drive, create or select the destination folder for uploaded videos and oversized files.
+13. Copy the folder ID from the browser URL. For this URL:
 
 ```text
 https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
@@ -158,7 +167,7 @@ The folder ID is:
 1AbCdEfGhIjKlMnOpQrStUvWxYz
 ```
 
-13. In `.env`, set:
+14. In `.env`, set:
 
 ```env
 GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz

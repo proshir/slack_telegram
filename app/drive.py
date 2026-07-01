@@ -37,7 +37,12 @@ class DriveUploader:
         body = {"name": filename, "parents": [self._folder_id]}
 
         response = self._execute_with_retry(
-            service.files().create(body=body, media_body=media, fields="id,webViewLink"),
+            service.files().create(
+                body=body,
+                media_body=media,
+                fields="id,webViewLink",
+                supportsAllDrives=True,
+            ),
             "drive_upload",
             event_id,
         )
@@ -48,6 +53,7 @@ class DriveUploader:
                 fileId=file_id,
                 body={"type": "anyone", "role": "reader"},
                 fields="id",
+                supportsAllDrives=True,
             ),
             "drive_permission",
             event_id,
