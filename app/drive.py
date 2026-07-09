@@ -46,19 +46,8 @@ class DriveUploader:
         )
         file_id = response["id"]
 
-        self._execute_with_retry(
-            service.permissions().create(
-                fileId=file_id,
-                body={"type": "anyone", "role": "reader"},
-                fields="id",
-                supportsAllDrives=True,
-            ),
-            "drive_permission",
-            event_id,
-        )
-
         link = response.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
-        logger.info("event_id=%s drive_file_id=%s route=drive_link", event_id, file_id)
+        logger.info("event_id=%s drive_file_id=%s route=drive_link access=restricted", event_id, file_id)
         return link
 
     def _load_credentials(self, event_id: str) -> Credentials:

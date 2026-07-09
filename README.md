@@ -12,7 +12,7 @@ Small FastAPI service that forwards selected Slack channel activity to Telegram.
 - Sends forwarded or shared Slack messages to Telegram, including nested text and files.
 - Downloads Slack private files with the Slack bot token before forwarding.
 - Sends normal files and images to Telegram when they fit within `TELEGRAM_MAX_UPLOAD_MB`.
-- Uploads videos and oversized files to Google Drive, makes them readable by anyone with the link, and sends the Drive link to Telegram.
+- Uploads videos and oversized files to Google Drive with restricted access, then sends the Drive link to Telegram.
 - Never posts Slack private file URLs to Telegram.
 
 ## Configuration
@@ -194,6 +194,8 @@ GOOGLE_DRIVE_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
 ```
 
 The app requests the narrower Google Drive `drive.file` scope. The downloaded OAuth client JSON is only needed for the one-time token generation command. The running Docker container uses the generated `GOOGLE_OAUTH_TOKEN`; keep that file private. In Docker Compose, `./data` is mounted writable so token refreshes can be persisted, while `./secrets` remains read-only for the downloaded OAuth client JSON.
+
+Uploaded Drive files keep Google Drive's default restricted access. Telegram receives the Drive link, but only Google accounts that already have access to the file or destination folder can open it.
 
 ## Local Run
 
