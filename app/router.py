@@ -53,6 +53,7 @@ class SlackEventProcessor:
             await self._process_file(event_id, file_info)
 
     async def _process_file(self, event_id: str, file_info: dict[str, Any]) -> None:
+        file_info = await self._with_downloadable_slack_file_info(file_info, event_id)
         file_id = str(file_info.get("id") or "unknown")
         filename = _safe_filename(str(file_info.get("name") or file_info.get("title") or file_id))
         mime_type = str(file_info.get("mimetype") or "application/octet-stream")
@@ -150,6 +151,76 @@ class SlackEventProcessor:
                 )
         path.unlink(missing_ok=True)
         raise RuntimeError("Slack file download failed") from last_error
+
+    async def _with_downloadable_slack_file_info(self, file_info: dict[str, Any], event_id: str) -> dict[str, Any]:
+        file_id = str(file_info.get("id") or "")
+        if not file_id or not _needs_slack_file_info(file_info):
+            return file_info
+
+        hydrated = await self._fetch_slack_file_info(file_id, event_id)
+        if not hydrated:
+            return file_info
+
+        logger.info("event_id=%s file_id=%s slack_file_info_hydrated=true", event_id, file_id)
+        return _merge_file_info(file_info, hydrated)
+
+    async def _fetch_slack_file_info(self, file_id: str, event_id: str) -> dict[str, Any] | None:
+        headers = {"Authorization": f"Bearer {self._settings.slack_bot_token}"}
+        params = {"file": file_id}
+        timeout = self._settings.request_timeout_seconds
+
+        for attempt in range(1, 4):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.get("https://slack.com/api/files.info", headers=headers, params=params)
+
+                if response.status_code in (408, 429, 500, 502, 503, 504):
+                    if attempt < 3:
+                        logger.warning(
+                            "event_id=%s file_id=%s slack_file_info_retry=true status=%s attempt=%s",
+                            event_id,
+                            file_id,
+                            response.status_code,
+                            attempt,
+                        )
+                        continue
+
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                if attempt == 3:
+                    logger.warning(
+                        "event_id=%s file_id=%s slack_file_info_failed=true error=%s",
+                        event_id,
+                        file_id,
+                        exc.__class__.__name__,
+                    )
+                    return None
+                logger.warning(
+                    "event_id=%s file_id=%s slack_file_info_retry=true attempt=%s error=%s",
+                    event_id,
+                    file_id,
+                    attempt,
+                    exc.__class__.__name__,
+                )
+                continue
+
+            if not payload.get("ok"):
+                logger.warning(
+                    "event_id=%s file_id=%s slack_file_info_failed=true slack_error=%s",
+                    event_id,
+                    file_id,
+                    payload.get("error") or "unknown",
+                )
+                return None
+
+            hydrated = payload.get("file")
+            if not isinstance(hydrated, dict):
+                logger.warning("event_id=%s file_id=%s slack_file_info_missing_file=true", event_id, file_id)
+                return None
+            return hydrated
+
+        return None
 
 
 def _safe_filename(filename: str) -> str:
@@ -319,6 +390,19 @@ def _looks_like_slack_file(value: dict[str, Any]) -> bool:
 
 def _has_private_file_url(value: dict[str, Any]) -> bool:
     return bool(value.get("url_private_download") or value.get("url_private"))
+
+
+def _needs_slack_file_info(value: dict[str, Any]) -> bool:
+    file_access = str(value.get("file_access") or "").lower()
+    return not _has_private_file_url(value) or file_access == "check_file_info"
+
+
+def _merge_file_info(original: dict[str, Any], hydrated: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(original)
+    for key, value in hydrated.items():
+        if value not in (None, "", [], {}):
+            merged[key] = value
+    return merged
 
 
 def _safe_int(value: Any) -> int:

@@ -84,6 +84,8 @@ For Docker Compose, put the Google OAuth client JSON under `./secrets`; the gene
 4. Invite the bot to each allowed Slack channel.
 5. Put those channel IDs in `SLACK_CHANNEL_IDS`.
 
+For Slack Connect channels or app-originated shares, Slack may send a lightweight file object before exposing the private download URL. Keep the `files:read` scope enabled and make sure the bot can see the source channel; the service will call Slack `files.info` with the file ID when it needs to hydrate the file before downloading it.
+
 ## Slack Message Shortcut Setup
 
 Use this when you want to right-click a Slack message and manually send that selected message to Telegram, without copying or forwarding it into a watched channel.
