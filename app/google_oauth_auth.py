@@ -35,7 +35,7 @@ def main() -> None:
     parser.add_argument(
         "--create-folder",
         default="",
-        help="Create a Google Drive folder with this name after authorization and print its folder ID.",
+        help="Create or reuse a Google Drive folder with this name after authorization and print its folder ID.",
     )
     args = parser.parse_args()
 
@@ -59,16 +59,41 @@ def main() -> None:
 
     if args.create_folder:
         service = build("drive", "v3", credentials=credentials, cache_discovery=False)
-        folder = (
-            service.files()
-            .create(
-                body={"name": args.create_folder, "mimeType": "application/vnd.google-apps.folder"},
-                fields="id,webViewLink",
+        folder = find_folder(service, args.create_folder)
+        if folder:
+            print(f"Using existing Google Drive folder: {folder.get('webViewLink')}")
+        else:
+            folder = (
+                service.files()
+                .create(
+                    body={"name": args.create_folder, "mimeType": "application/vnd.google-apps.folder"},
+                    fields="id,webViewLink",
+                )
+                .execute()
             )
-            .execute()
-        )
-        print(f"Created Google Drive folder: {folder.get('webViewLink')}")
+            print(f"Created Google Drive folder: {folder.get('webViewLink')}")
         print(f"Set GOOGLE_DRIVE_FOLDER_ID={folder['id']}")
+
+
+def find_folder(service: object, folder_name: str) -> dict[str, str] | None:
+    escaped_name = folder_name.replace("\\", "\\\\").replace("'", "\\'")
+    response = (
+        service.files()
+        .list(
+            q=(
+                "mimeType='application/vnd.google-apps.folder' "
+                f"and name='{escaped_name}' "
+                "and trashed=false"
+            ),
+            fields="files(id,name,webViewLink)",
+            pageSize=1,
+        )
+        .execute()
+    )
+    files = response.get("files", [])
+    if not files:
+        return None
+    return files[0]
 
 
 if __name__ == "__main__":

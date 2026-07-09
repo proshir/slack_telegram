@@ -174,7 +174,7 @@ This app uploads to a personal **My Drive** folder using your Google account OAu
 6. Click **Create credentials** > **OAuth client ID**.
 7. Choose **Desktop app**.
 8. Download the client JSON and save it as `./secrets/google-oauth-client.json`.
-9. Generate the OAuth token once and let the helper create the upload folder:
+9. Generate the OAuth token once and let the helper create or reuse the upload folder:
 
 ```bash
 python -m app.google_oauth_auth \
@@ -185,7 +185,7 @@ python -m app.google_oauth_auth \
 
 If the browser cannot open automatically, add `--no-browser`, open the printed URL, and complete the login.
 
-10. Copy the printed `GOOGLE_DRIVE_FOLDER_ID`.
+10. Copy the printed `GOOGLE_DRIVE_FOLDER_ID`. If you rerun the command later with the same folder name, the helper reuses the existing folder when it can see it.
 11. In `.env`, set:
 
 ```env
