@@ -8,7 +8,6 @@ from typing import Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
@@ -23,8 +22,6 @@ DRIVE_SCOPES = ("https://www.googleapis.com/auth/drive.file",)
 
 class DriveUploader:
     def __init__(self, settings: Settings) -> None:
-        self._auth_mode = settings.google_auth_mode
-        self._credentials_path = settings.google_application_credentials
         self._oauth_token_path = settings.google_oauth_token
         self._folder_id = settings.google_drive_folder_id
 
@@ -64,17 +61,7 @@ class DriveUploader:
         logger.info("event_id=%s drive_file_id=%s route=drive_link", event_id, file_id)
         return link
 
-    def _load_credentials(self, event_id: str) -> Credentials | service_account.Credentials:
-        if self._auth_mode == "service_account":
-            return service_account.Credentials.from_service_account_file(
-                self._credentials_path,
-                scopes=DRIVE_SCOPES,
-            )
-        if self._auth_mode == "oauth":
-            return self._load_oauth_credentials(event_id)
-        raise ValueError(f"Unsupported GOOGLE_AUTH_MODE={self._auth_mode!r}")
-
-    def _load_oauth_credentials(self, event_id: str) -> Credentials:
+    def _load_credentials(self, event_id: str) -> Credentials:
         token_path = Path(self._oauth_token_path)
         if not token_path.exists():
             raise RuntimeError(
