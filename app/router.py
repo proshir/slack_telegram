@@ -45,9 +45,9 @@ class SlackEventProcessor:
             return
 
         texts = _extract_texts(event)
-        for text in texts:
-            await self._telegram.send_message(text, event_id)
-            logger.info("event_id=%s route=telegram_message", event_id)
+        if texts:
+            await self._telegram.send_message("\n\n".join(texts), event_id)
+            logger.info("event_id=%s route=telegram_message text_parts=%s", event_id, len(texts))
 
         for file_info in _extract_files(event):
             await self._process_file(event_id, file_info)
@@ -162,19 +162,22 @@ def _extract_texts(event: dict[str, Any]) -> list[str]:
     seen_texts: set[str] = set()
     seen_objects: set[int] = set()
 
-    def add(raw: Any) -> None:
+    def add(raw: Any) -> bool:
         if not isinstance(raw, str):
-            return
+            return False
         text = raw.strip()
         if not text or text in seen_texts:
-            return
+            return False
         seen_texts.add(text)
         texts.append(text)
+        return True
 
-    def collect_blocks(raw_blocks: Any) -> None:
+    def collect_blocks(raw_blocks: Any) -> bool:
         if not isinstance(raw_blocks, list):
-            return
+            return False
+        before_count = len(texts)
         _collect_block_text(raw_blocks, add)
+        return len(texts) > before_count
 
     def collect_message(message: dict[str, Any]) -> None:
         object_id = id(message)
@@ -182,9 +185,11 @@ def _extract_texts(event: dict[str, Any]) -> list[str]:
             return
         seen_objects.add(object_id)
 
-        add(message.get("text"))
-        collect_blocks(message.get("blocks"))
-        collect_blocks(message.get("message_blocks"))
+        has_direct_text = add(message.get("text"))
+        if not has_direct_text:
+            has_direct_text = collect_blocks(message.get("blocks"))
+        if not has_direct_text:
+            collect_blocks(message.get("message_blocks"))
 
         attachments = message.get("attachments")
         if isinstance(attachments, list):
@@ -204,11 +209,13 @@ def _extract_texts(event: dict[str, Any]) -> list[str]:
         seen_objects.add(object_id)
 
         before_count = len(texts)
-        add(attachment.get("pretext"))
-        add(attachment.get("text"))
-        collect_blocks(attachment.get("blocks"))
-        collect_blocks(attachment.get("message_blocks"))
-        if len(texts) == before_count:
+        has_direct_text = add(attachment.get("pretext"))
+        has_direct_text = add(attachment.get("text")) or has_direct_text
+        if not has_direct_text:
+            has_direct_text = collect_blocks(attachment.get("blocks"))
+        if not has_direct_text:
+            has_direct_text = collect_blocks(attachment.get("message_blocks"))
+        if not has_direct_text and len(texts) == before_count:
             add(attachment.get("fallback"))
 
         for key in ("message", "original_message", "root", "source"):
@@ -217,7 +224,25 @@ def _extract_texts(event: dict[str, Any]) -> list[str]:
                 collect_message(nested_message)
 
     collect_message(event)
-    return texts
+    return _remove_redundant_text_fragments(texts)
+
+
+def _remove_redundant_text_fragments(texts: list[str]) -> list[str]:
+    pruned: list[str] = []
+    for index, text in enumerate(texts):
+        if any(
+            index != other_index and _is_line_fragment(text, other_text)
+            for other_index, other_text in enumerate(texts)
+        ):
+            continue
+        pruned.append(text)
+    return pruned
+
+
+def _is_line_fragment(text: str, other_text: str) -> bool:
+    if text == other_text or "\n" not in other_text:
+        return False
+    return text in {line.strip() for line in other_text.splitlines()}
 
 
 def _collect_block_text(value: Any, add: Any) -> None:
